@@ -24,11 +24,9 @@ jobs:
 
           if [[ "$URL" == http* ]]; then
             echo "Creating 8tv.m3u..."
-            cat <<EOF > 8tv.m3u
-#EXTM3U
-#EXTINF:-1 tvg-id="8TV.my" tvg-name="8TV" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/3/36/8TV_%28Malaysia%29_logo.svg/320px-8TV_%28Malaysia%29_logo.svg.png" group-title="Malaysia",8TV
-$URL
-EOF
+            echo "#EXTM3U" > 8tv.m3u
+            echo "#EXTINF:-1 tvg-id=\"8TV.my\" tvg-name=\"8TV\" tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/3/36/8TV_%28Malaysia%29_logo.svg/320px-8TV_%28Malaysia%29_logo.svg.png\" group-title=\"Malaysia\",8TV" >> 8tv.m3u
+            echo "$URL" >> 8tv.m3u
           else
             echo "❌ Invalid stream URL. Exiting."
             exit 1
