@@ -1,0 +1,37 @@
+name: Update 8TV HLS URL (Authenticated)
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # 每 30 分钟执行
+  workflow_dispatch:
+
+jobs:
+  update-hls-url:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Fetch latest HLS stream URL (with login)
+        run: |
+          API_URL="https://headend-api.tonton.com.my/v300/api/playback.class.api.php/GOgetLiveConfig/378/1/6420325?format=json&appID=TONTON&rate=WIFIHIGH&plt=web&manufacturer=edge&serviceID=default&model=Mozilla/5.0%20(Windows%20NT%2010.0;%20Win64;%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/137.0.0.0%20Safari/537.36%20Edg/137.0.0.0&firmwareVersion=10&appVersion=6.0.57&deviceOS=PCBROWSER&limitAdTracking=0&lot_auds=ca_381,ca_365,ca_775,ca_420,ca_803,ca_215,ca_919,ca_1056,ca_330,ca_972,ca_773,ca_364,ca_063,ca_378,ca_724,ca_003,ca_290,all,ca_672,ca_184,ca_1101,ca_305"
+
+          curl -s "$API_URL" \
+            -H "deviceId: web-v3-d2ef7a01104982c7b60e363c0bd3a6ac-4a38d56f0a61edac224a5de80863606a-cmaqoh2gh0001c652z1n2si81" \
+            -H "loginToken: 54eaad3a7d0505dc5efa99f3c3ed07816b1780067984a5e84df570a128c67f3eefdcf7f7092890076c75a17e2d775316c4927d3b013959cd1e02dc8ce0d9143c62e486b29a35b8b4e182547f9803f2e560ea0550d70199ff3b0b839c8bd0ac1f3d4fcf8ec4d6753d2309e7aae2650aeedee3ca7d4a0e173ba8a7907ab1a05e76d8127181b9abcbdca59bf572f94f0795ae20f4ada72d7912f8c5076dc6f0a6bf88132257e0377728e6d95dfe91f1e3ebb0994141c1a4e3ce93eb8695313cc8fe035a8e37797205504e6fade298a3a3fc23f607d0a4bbf71b2e11dbb1ec057205d60afa55fe37ec348047f064b75f74157761dec7a2d0997ce9d9f4a50d263bfb6c63ddbe6fee86d8873159fe6f127a06" \
+            -o response.json
+
+          jq -r '.media.streams[0].url' response.json > 8tv.m3u
+          echo "#EXTM3U" | cat - 8tv.m3u > temp && mv temp 8tv.m3u
+
+      - name: Commit and Push if Changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 8tv.m3u
+          git diff --cached --quiet || git commit -m "🔐 Update 8TV HLS URL (with loginToken)"
+          git push
