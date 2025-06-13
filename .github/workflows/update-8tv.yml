@@ -1,46 +1,74 @@
-name: Update 8TV M3U
+name: Update 8TV Stream
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: '0 * * * *'  # 每小时执行
   workflow_dispatch:
 
 jobs:
-  update-m3u:
+  update-stream:
     runs-on: ubuntu-latest
+
+    env:
+      API_URL: "https://headend-api.tonton.com.my/v300/api/playback.class.api.php/GOgetLiveConfig/378/1/6420325?format=json&appID=TONTON"
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch 8TV stream with Bearer token
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Get Tonton Access Token
+        id: get_token
         run: |
-          API_URL="https://headend-api.tonton.com.my/v300/api/playback.class.api.php/GOgetLiveConfig/378/1/6420325?format=json&appID=TONTON"
+          RESPONSE=$(curl -s -X POST https://oauth.revmedia.my/auth/realms/tonton/protocol/openid-connect/token \
+            -d "grant_type=password" \
+            -d "client_id=551835651455588" \
+            -d "username=${{ secrets.TONTON_EMAIL }}" \
+            -d "password=${{ secrets.TONTON_PASSWORD }}" \
+            -d "code_challenge=a81ylJNpqZpoS8ySBlYZbx8t0IrAZizvXsflM5fjcm8" \
+            -d "code_challenge_method=S256")
 
-          echo "Requesting with Bearer token..."
-          curl -s -H "Authorization: Bearer ${{ secrets.TONTON_TOKEN }}" "$API_URL" -o data.json
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
 
-          echo "Parsing stream URL..."
-          URL=$(jq -r '.media.streams[0].url' data.json)
-
-          if [[ "$URL" == http* ]]; then
-            echo "Creating 8tv.m3u..."
-            echo "#EXTM3U" > 8tv.m3u
-            echo "#EXTINF:-1 tvg-id=\"8TV.my\" tvg-name=\"8TV\" tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/3/36/8TV_%28Malaysia%29_logo.svg/320px-8TV_%28Malaysia%29_logo.svg.png\" group-title=\"Malaysia\",8TV" >> 8tv.m3u
-            echo "$URL" >> 8tv.m3u
-          else
-            echo "❌ Invalid stream URL. Exiting."
+          if [[ "$TOKEN" == "null" || -z "$TOKEN" ]]; then
+            echo "❌ Failed to get access token"
+            echo "$RESPONSE"
             exit 1
           fi
 
-      - name: Commit and push
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          echo "✅ Got token"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-          git add 8tv.m3u
-          if git diff --cached --quiet; then
-            echo "No update needed."
-          else
-            git commit -m "Update 8TV M3U at $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
-            git push
+      - name: Request Playback Config
+        id: fetch_config
+        run: |
+          STREAM_JSON=$(curl -s -H "Authorization: Bearer ${{ steps.get_token.outputs.token }}" "$API_URL")
+          
+          echo "$STREAM_JSON" > response.json
+
+          URL=$(echo "$STREAM_JSON" | jq -r '.media.streams[0].url')
+
+          if [[ "$URL" == "null" || -z "$URL" ]]; then
+            echo "❌ Invalid stream URL. Exiting."
+            cat response.json
+            exit 1
           fi
+
+          echo "✅ Stream URL: $URL"
+          echo "stream_url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Save Stream URL to file
+        run: |
+          echo "#EXTM3U" > 8tv.m3u
+          echo "#EXTINF:-1 tvg-id=\"8TV\" tvg-name=\"8TV\" tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/6/6e/8TV_logo_2021.svg/1200px-8TV_logo_2021.svg.png\" group-title=\"Malaysia\",8TV" >> 8tv.m3u
+          echo "${{ steps.fetch_config.outputs.stream_url }}" >> 8tv.m3u
+
+      - name: Commit & Push
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add 8tv.m3u
+          git commit -m "🔄 Update 8TV stream [$(date -u)]" || echo "No changes"
+          git push
